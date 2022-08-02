@@ -75,12 +75,14 @@ class Penalty(DatabaseObject):
     @classmethod
     def by_count(cls, flag, team):
         """ Return penalty count for a team and flag """
-        if not team:
-            return 0
         return (
-            dbsession.query(cls)
-            .filter(and_(cls.flag_id == flag.id, cls.team_id == team.id))
-            .count()
+            (
+                dbsession.query(cls)
+                .filter(and_(cls.flag_id == flag.id, cls.team_id == team.id))
+                .count()
+            )
+            if team
+            else 0
         )
 
     @classmethod
@@ -133,8 +135,7 @@ class Penalty(DatabaseObject):
         if not submission:
             submission = ""
         logging.debug("Creating flag '%s' attempt for %r" % (flag.id, team.name))
-        attempt = Penalty(team_id=team.id, flag_id=flag.id, _token=submission)
-        return attempt
+        return Penalty(team_id=team.id, flag_id=flag.id, _token=submission)
 
     def to_dict(self):
         """ Return public data as dict """

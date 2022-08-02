@@ -155,37 +155,37 @@ class ScoreboardAjaxHandler(BaseHandler):
         """ Prepare the pagination for the leaderboard """
         teams = self.settings["scoreboard_state"].get("teams")
         teamcount = len(teams)
-        if teamcount > display:
-            """ Minimize the content sent to the browser """
-            scoreboard = self.settings["scoreboard_state"].copy()
-            end_count = display * page
-            start_count = end_count - display
-            teamlist = []
-            for i, team in enumerate(teams):
-                if i < start_count or i >= end_count:
-                    teamlist.append(team)
-            for team in teamlist:
-                if team in scoreboard["teams"]:
-                    del scoreboard["teams"][team]
-            for level in scoreboard.get("levels"):
-                for team in teamlist:
-                    if team in scoreboard["levels"][level]["teams"]:
-                        del scoreboard["levels"][level]["teams"][team]
-                for box in scoreboard["levels"][level].get("boxes"):
-                    for team in teamlist:
-                        if team in scoreboard["levels"][level]["boxes"][box]["teams"]:
-                            del scoreboard["levels"][level]["boxes"][box]["teams"][team]
-            return scoreboard
-        else:
+        if teamcount <= display:
             return self.settings["scoreboard_state"]
+        """ Minimize the content sent to the browser """
+        scoreboard = self.settings["scoreboard_state"].copy()
+        end_count = display * page
+        start_count = end_count - display
+        teamlist = [
+            team
+            for i, team in enumerate(teams)
+            if i < start_count or i >= end_count
+        ]
+
+        for team in teamlist:
+            if team in scoreboard["teams"]:
+                del scoreboard["teams"][team]
+        for level in scoreboard.get("levels"):
+            for team in teamlist:
+                if team in scoreboard["levels"][level]["teams"]:
+                    del scoreboard["levels"][level]["teams"][team]
+            for box in scoreboard["levels"][level].get("boxes"):
+                for team in teamlist:
+                    if team in scoreboard["levels"][level]["boxes"][box]["teams"]:
+                        del scoreboard["levels"][level]["boxes"][box]["teams"][team]
+        return scoreboard
 
     def mvp_table(self):
         """ Render the "leaderboard" mvp snippit """
         self.render("scoreboard/mvp_table.html", users=User.ranks())
 
     def timediff(self):
-        timer = self.timer()
-        if timer:
+        if timer := self.timer():
             self.write(timer)
         else:
             self.finish()
@@ -212,8 +212,7 @@ class ScoreboardAjaxHandler(BaseHandler):
         """ Returns team details in JSON form """
         uuid = self.get_argument("uuid", "")
         if uuid == "":
-            user = self.get_current_user()
-            if user:
+            if user := self.get_current_user():
                 team = user.team
         else:
             team = Team.by_uuid(uuid)
@@ -228,9 +227,7 @@ class ScoreboardAjaxHandler(BaseHandler):
                 box = flag.box
                 if box and box.category_id is not None:
                     catlist[int(box.category_id)] += 1
-            skillvalues = []
-            for val in catlist:
-                skillvalues.append(catlist[val])
+            skillvalues = list(catlist.values())
             self.write(str(skillvalues))
         else:
             self.write({"error": "Team does not exist"})
@@ -255,7 +252,7 @@ class ScoreboardHistoryHandler(BaseHandler):
 class ScoreboardFeedHandler(BaseHandler):
     def get(self, *args, **kwargs):
         """ Renders the scoreboard feed page """
-        hostname = "%s://%s" % (self.request.protocol, self.request.host)
+        hostname = f"{self.request.protocol}://{self.request.host}"
         self.render("scoreboard/feed.html", hostname=hostname)
 
 
@@ -357,10 +354,12 @@ class TeamsHandler(BaseHandler):
             page = pcount
         end_count = display * page
         start_count = end_count - display
-        teams = []
-        for i, team in enumerate(ranks):
-            if i >= start_count and i < end_count:
-                teams.append(team)
+        teams = [
+            team
+            for i, team in enumerate(ranks)
+            if i >= start_count and i < end_count
+        ]
+
         if scoreboard_visible(user):
             self.render(
                 "scoreboard/teams.html",

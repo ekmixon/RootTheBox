@@ -53,8 +53,14 @@ class _BotDatabaseObject(object):
         """ Converts class name from camel case to snake case """
         name = self.__name__
         return str(
-            name[0].lower()
-            + re.sub(r"([A-Z])", lambda letter: "_" + letter.group(0).lower(), name[1:])
+            (
+                name[0].lower()
+                + re.sub(
+                    r"([A-Z])",
+                    lambda letter: f"_{letter.group(0).lower()}",
+                    name[1:],
+                )
+            )
         )
 
     id = Column(Integer, primary_key=True, unique=True, nullable=False)
@@ -115,8 +121,8 @@ class BotManager(object):
         if os.path.exists(options.botnet_db):
             os.remove(options.botnet_db)
             logging.debug("Removing old botnet database file")
-        self.db_path = "sqlite:///%s" % options.botnet_db
-        logging.debug("Created botnet database at: %s" % self.db_path)
+        self.db_path = f"sqlite:///{options.botnet_db}"
+        logging.debug(f"Created botnet database at: {self.db_path}")
         self.sqlite_engine = create_engine(self.db_path, echo=options.log_sql)
         Session = sessionmaker(bind=self.sqlite_engine, autocommit=True)
         self.botdb = Session(autoflush=True)
@@ -210,8 +216,8 @@ class BotManager(object):
 
     def notify_monitors(self, team_name):
         """ Update team monitors """
-        if team_name in self.monitors and 0 < len(self.monitors[team_name]):
-            logging.debug("Sending update to %s" % team_name)
+        if team_name in self.monitors and len(self.monitors[team_name]) > 0:
+            logging.debug(f"Sending update to {team_name}")
             bots = self.get_bots(team_name)
             for monitor in self.monitors[team_name]:
                 monitor.update(bots)

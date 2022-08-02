@@ -53,10 +53,7 @@ class GameHistory(object):
         """ Moves snapshots from db into the cache """
         logging.info("Loading game history from database ...")
         snaps = Snapshot.all()
-        if len(snaps) > 0:
-            snap = snaps[0]
-        else:
-            snap = self.__now__()  # Take starting snapshot
+        snap = snaps[0] if len(snaps) > 0 else self.__now__()
         self.epoch = snap.created
         try:
             max_index = len(self)
@@ -137,7 +134,7 @@ class GameHistory(object):
             yield snapshot.to_dict()
 
     def __contains__(self, index):
-        return True if Snapshot.by_id(index) is not None else False
+        return Snapshot.by_id(index) is not None
 
     def __len__(self):
         """ Return length of the game history """
@@ -162,9 +159,8 @@ class GameHistory(object):
         key = Snapshot.to_key(index + 1)
         if self.cache.get(key) is not None:
             return self.cache.get(key)
-        else:
-            snapshot = Snapshot.by_id(index + 1)
-            if snapshot is not None:
-                self.cache.set(snapshot.key, snapshot.to_dict())
-                return snapshot.to_dict()
+        snapshot = Snapshot.by_id(index + 1)
+        if snapshot is not None:
+            self.cache.set(snapshot.key, snapshot.to_dict())
+            return snapshot.to_dict()
         return None

@@ -42,12 +42,12 @@ class Scoreboard(object):
     """ Manages websocket connections (mostly thread safe) """
 
     @classmethod
-    def now(self, app):
+    def now(cls, app):
         """ Returns the current game state """
         return json.dumps(app.settings["scoreboard_state"].get("teams"))
 
     @classmethod
-    def update_gamestate(self, app):
+    def update_gamestate(cls, app):
         game_levels = GameLevel.all()
         game_state = {
             "teams": {},
@@ -128,7 +128,7 @@ def score_bots():
     for team in Team.all():
         if not team.locked:
             bots = bot_manager.by_team(team.name)
-            if 0 < len(bots):
+            if len(bots) > 0:
                 reward = 0
                 for bot in bots:
                     try:
@@ -140,9 +140,7 @@ def score_bots():
                             }
                         )
                     except:
-                        logging.info(
-                            "Bot at %s failed to respond to score ping" % bot.remote_ip
-                        )
+                        logging.info(f"Bot at {bot.remote_ip} failed to respond to score ping")
 
                 message = "%s was awarded $%d for controlling %s bot(s)" % (
                     team.name,

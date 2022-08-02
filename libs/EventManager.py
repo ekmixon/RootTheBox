@@ -81,9 +81,11 @@ class EventManager(object):
 
     def get_user_connections(self, team_id, user_id):
         """ For an user object this method returns a set() of connections """
-        if team_id in self.auth_connections:
-            if user_id in self.auth_connections[team_id]:
-                return self.auth_connections[team_id][user_id]
+        if (
+            team_id in self.auth_connections
+            and user_id in self.auth_connections[team_id]
+        ):
+            return self.auth_connections[team_id][user_id]
         return set()
 
     def is_online(self, user):
@@ -91,17 +93,15 @@ class EventManager(object):
         Returns bool if the given user has an open notify socket
         """
         connections = self.get_user_connections(user.team.id, user.id)
-        return False if connections is None or len(connections) == 0 else True
+        return connections is not None and len(connections) != 0
 
     @property
     def all_connections(self):
         """ Iterate ALL THE THINGS! """
         for team_id in self.auth_connections:
             for user_id in self.auth_connections[team_id]:
-                for connection in self.auth_connections[team_id][user_id]:
-                    yield connection
-        for connection in self.public_connections:
-            yield connection
+                yield from self.auth_connections[team_id][user_id]
+        yield from self.public_connections
 
     # [ Push Updates ] -----------------------------------------------------
     def push_broadcast(self):
@@ -151,13 +151,11 @@ class EventManager(object):
     # [ Broadcast Events ] -------------------------------------------------
     def admin_score_update(self, team, message, value):
         """ Callback for when admin point change is made """
-        if value < 0:
-            icon = WARNING
-        else:
-            icon = SUCCESS
+        icon = WARNING if value < 0 else SUCCESS
         Notification.create_team(
-            team, "Admin Update", "%s (%s)" % (message, str(value)), icon
+            team, "Admin Update", f"{message} ({str(value)})", icon
         )
+
         self.io_loop.add_callback(self.push_team, team.id)
         self.io_loop.add_callback(self.push_scoreboard)
 
@@ -172,19 +170,14 @@ class EventManager(object):
 
     def flag_decayed(self, team, flag):
         """ Callback for when a bot is added """
-        message = (
-            "The value of challenge %s has decreased due to other team captures - score adjusted."
-            % (flag.name,)
-        )
+        message = f"The value of challenge {flag.name} has decreased due to other team captures - score adjusted."
+
         Notification.create_team(team, "Flag Value Decreased", message, INFO)
         self.io_loop.add_callback(self.push_team, team.id)
 
     def flag_captured(self, player, flag):
         """ Callback for when a flag is captured """
-        if isinstance(player, User):
-            team = player.team
-        else:
-            team = player
+        team = player.team if isinstance(player, User) else player
         if isinstance(player, User) and options.teams:
             message = '%s (%s) has completed "%s" in %s' % (
                 player.handle,
@@ -199,9 +192,7 @@ class EventManager(object):
                 flag.box.name,
             )
         if len(GameLevel.all()) > 1:
-            message = message + " (%s)" % (
-                GameLevel.by_id(flag.box.game_level_id).name,
-            )
+            message = (message + f" ({GameLevel.by_id(flag.box.game_level_id).name})")
         Notification.create_broadcast(team, "Flag Capture", message, SUCCESS)
         self.io_loop.add_callback(self.push_broadcast)
         self.io_loop.add_callback(self.push_scoreboard)
@@ -226,7 +217,7 @@ class EventManager(object):
     def bot_scored(self, team, message=None):
         """ Callback for when a bot scores """
         if message is None:
-            message = "%s botnet has scored" % team.name
+            message = f"{team.name} botnet has scored"
         Notification.create_team(team, "Botnet Scored", message, SUCCESS)
         self.io_loop.add_callback(self.push_team, team.id)
         self.io_loop.add_callback(self.push_scoreboard)
@@ -234,13 +225,11 @@ class EventManager(object):
     def hint_taken(self, user, hint):
         """ Callback for when a hint is taken """
         if options.teams:
-            message = "%s has taken a hint for %s" % (user.handle, hint.box.name)
+            message = f"{user.handle} has taken a hint for {hint.box.name}"
         else:
-            message = "%s has taken a hint for %s" % (user.team.name, hint.box.name)
+            message = f"{user.team.name} has taken a hint for {hint.box.name}"
         if len(GameLevel.all()) > 1:
-            message = message + " (%s)" % (
-                GameLevel.by_id(hint.box.game_level_id).name,
-            )
+            message = (message + f" ({GameLevel.by_id(hint.box.game_level_id).name})")
         Notification.create_team(user.team, "Hint Taken", message, INFO)
         self.io_loop.add_callback(self.push_team, user.team.id)
         self.io_loop.add_callback(self.push_scoreboard)
@@ -260,37 +249,31 @@ class EventManager(object):
                 flag.box.name,
             )
         if len(GameLevel.all()) > 1:
-            message = message + " (%s)" % (
-                GameLevel.by_id(flag.box.game_level_id).name,
-            )
+            message = (message + f" ({GameLevel.by_id(flag.box.game_level_id).name})")
         Notification.create_team(user.team, "Flag Penalty", message, WARNING)
         self.io_loop.add_callback(self.push_team, user.team.id)
         self.io_loop.add_callback(self.push_scoreboard)
 
     def level_unlocked(self, user, level):
         """ Callback for when a team unlocks a new level """
-        message = "%s unlocked %s." % (user.team.name, level.name)
+        message = f"{user.team.name} unlocked {level.name}."
         Notification.create_broadcast(user.team, "Level Unlocked", message, SUCCESS)
         self.io_loop.add_callback(self.push_broadcast)
         self.io_loop.add_callback(self.push_scoreboard)
 
     def item_purchased(self, user, item):
         """ Callback when a team purchases an item """
-        message = "%s purchased %s from the black market" % (user.handle, item.name)
+        message = f"{user.handle} purchased {item.name} from the black market"
         Notification.create_team(user.team, "Upgrade Purchased", message, SUCCESS)
         self.io_loop.add_callback(self.push_team, user.team.id)
         self.io_loop.add_callback(self.push_scoreboard)
 
     def player_swated(self, user, target):
         if options.teams:
-            message = "%s (%s) called the SWAT team on %s (%s)." % (
-                user.handle,
-                user.team.name,
-                target.handle,
-                target.team.name,
-            )
+            message = f"{user.handle} ({user.team.name}) called the SWAT team on {target.handle} ({target.team.name})."
+
         else:
-            message = "%s called the SWAT team on %s." % (user.handle, target.handle)
+            message = f"{user.handle} called the SWAT team on {target.handle}."
         Notification.create_broadcast(user.team, "Player Arrested!", message, INFO)
         self.io_loop.add_callback(self.push_broadcast)
         self.io_loop.add_callback(self.push_scoreboard)
@@ -299,10 +282,10 @@ class EventManager(object):
     def user_joined_team(self, user):
         """ Callback when a user joins a team"""
         if options.teams:
-            message = "%s has joined the %s team" % (user.handle, user.team.name)
+            message = f"{user.handle} has joined the {user.team.name} team"
             Notification.create_team(user.team, "New Team Member", message, INFO)
         else:
-            message = "%s has joined the game" % (user.handle,)
+            message = f"{user.handle} has joined the game"
             Notification.create_team(user.team, "New Player", message, INFO)
         self.io_loop.add_callback(self.push_team, user.team.id)
         self.io_loop.add_callback(self.push_scoreboard)

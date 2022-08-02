@@ -151,13 +151,12 @@ class AdminCreateHandler(BaseHandler):
             corp_desc = self.get_argument("corporation_description", "")
             if Corporation.by_name(corp_name) is not None:
                 raise ValidationError("Corporation name already exists")
-            else:
-                corporation = Corporation()
-                corporation.name = corp_name
-                corporation.description = corp_desc
-                self.dbsession.add(corporation)
-                self.dbsession.commit()
-                self.redirect("/admin/view/game_objects")
+            corporation = Corporation()
+            corporation.name = corp_name
+            corporation.description = corp_desc
+            self.dbsession.add(corporation)
+            self.dbsession.commit()
+            self.redirect("/admin/view/game_objects")
         except ValidationError as error:
             self.render("admin/create/corporation.html", errors=[str(error)])
 
@@ -168,13 +167,12 @@ class AdminCreateHandler(BaseHandler):
             cat_desc = self.get_argument("category_description", "")
             if Category.by_category(category) is not None:
                 raise ValidationError("Category already exists")
-            else:
-                new_category = Category()
-                new_category.category = category
-                new_category.description = cat_desc
-                self.dbsession.add(new_category)
-                self.dbsession.commit()
-                self.redirect("/admin/view/categories")
+            new_category = Category()
+            new_category.category = category
+            new_category.description = cat_desc
+            self.dbsession.add(new_category)
+            self.dbsession.commit()
+            self.redirect("/admin/view/categories")
         except ValidationError as error:
             self.render("admin/create/category.html", errors=[str(error)])
 
@@ -189,15 +187,14 @@ class AdminCreateHandler(BaseHandler):
                 raise ValidationError("Game level does not exist")
             else:
                 if Corporation.by_uuid(corp_uuid) is None:
-                    if len(Corporation.all()) == 0:
-                        # Create a empty Corp
-                        corporation = Corporation()
-                        corporation.name = ""
-                        self.dbsession.add(corporation)
-                        self.dbsession.commit()
-                        corp_uuid = corporation.uuid
-                    else:
+                    if len(Corporation.all()) != 0:
                         raise ValidationError("Corporation does not exist")
+                    # Create a empty Corp
+                    corporation = Corporation()
+                    corporation.name = ""
+                    self.dbsession.add(corporation)
+                    self.dbsession.commit()
+                    corp_uuid = corporation.uuid
                 corp = Corporation.by_uuid(corp_uuid)
                 level = GameLevel.by_number(game_level)
                 box = Box(corporation_id=corp.id, game_level_id=level.id)
@@ -211,10 +208,7 @@ class AdminCreateHandler(BaseHandler):
                 box.capture_message = self.get_argument("capture_message", "")
                 box.value = self.get_argument("reward", 0)
                 cat = Category.by_uuid(self.get_argument("category_uuid", ""))
-                if cat is not None:
-                    box.category_id = cat.id
-                else:
-                    box.category_id = None
+                box.category_id = cat.id if cat is not None else None
                 # Avatar
                 avatar_select = self.get_argument("box_avatar_select", "")
                 if avatar_select and len(avatar_select) > 0:
@@ -223,7 +217,7 @@ class AdminCreateHandler(BaseHandler):
                     box.avatar = self.request.files["avatar"][0]["body"]
                 self.dbsession.add(box)
                 self.dbsession.commit()
-                self.redirect("/admin/view/game_objects#%s" % box.uuid)
+                self.redirect(f"/admin/view/game_objects#{box.uuid}")
         except ValidationError as error:
             self.render("admin/create/box.html", errors=[str(error)])
 
@@ -310,14 +304,13 @@ class AdminCreateHandler(BaseHandler):
             hint = Hint(box_id=box.id)
             hint.price = self.get_argument("price", "")
             hint.description = self.get_argument("description", "")
-            flag = Flag.by_uuid(self.get_argument("flag_uuid", ""))
-            if flag:
+            if flag := Flag.by_uuid(self.get_argument("flag_uuid", "")):
                 hint.flag_id = flag.id
             else:
                 hint.flag_id = None
             self.dbsession.add(hint)
             self.dbsession.commit()
-            self.redirect("/admin/view/game_objects#%s" % box.uuid)
+            self.redirect(f"/admin/view/game_objects#{box.uuid}")
         except ValidationError as error:
             self.render("admin/create/hint.html", errors=[str(error)])
 
@@ -342,8 +335,7 @@ class AdminCreateHandler(BaseHandler):
             fl.order
             self.dbsession.add(fl)
         flag.order = len(box.flags) + 1
-        lock = Flag.by_uuid(self.get_argument("lock_uuid", ""))
-        if lock:
+        if lock := Flag.by_uuid(self.get_argument("lock_uuid", "")):
             flag.lock_id = lock.id
         else:
             flag.lock_id = None
@@ -356,7 +348,7 @@ class AdminCreateHandler(BaseHandler):
             for item in choices:
                 FlagChoice.create_choice(flag, item)
 
-        self.redirect("/admin/view/game_objects#%s" % box.uuid)
+        self.redirect(f"/admin/view/game_objects#{box.uuid}")
 
     def add_attachments(self, flag):
         """ Add uploaded files as attachments to flags """
@@ -401,11 +393,7 @@ class AdminViewHandler(BaseHandler):
     @authenticated
     @authorized(ADMIN_PERMISSION)
     def post(self, *args, **kwargs):
-        if args[0] == "statistics" or args[0] == "game_objects":
-            uri = {
-                "game_objects": "admin/view/game_objects.html",
-                "statistics": "admin/view/statistics.html",
-            }
+        if args[0] in ["statistics", "game_objects"]:
             flag_uuid = self.get_argument("flag_uuid", "")
             team_uuid = self.get_argument("team_uuid", "")
             flag = Flag.by_uuid(flag_uuid)
@@ -421,16 +409,16 @@ class AdminViewHandler(BaseHandler):
                         flag.dynamic_value(team) * (options.flag_penalty_cost * 0.01)
                     )
                     team.money += value
-                    penalty = Penalty.by_team_token(flag, team, answer_token)
-                    if penalty:
+                    if penalty := Penalty.by_team_token(flag, team, answer_token):
                         self.dbsession.delete(penalty)
                     self.dbsession.add(team)
                     self.dbsession.commit()
                     self.event_manager.admin_score_update(
                         team,
-                        "%s penalty reversed - score has been updated." % team.name,
+                        f"{team.name} penalty reversed - score has been updated.",
                         value,
                     )
+
                     if flag not in team.flags:
                         flag_value = flag.dynamic_value(team)
                         if (
@@ -452,23 +440,28 @@ class AdminViewHandler(BaseHandler):
                         success.append("%s awarded %d" % (team.name, flag_value))
                 if (
                     accept_answer == "on"
-                    and (flag.type == "static" or flag.type == "regex")
+                    and flag.type in ["static", "regex"]
                     and not flag.capture(answer_token)
                 ):
                     flag.type = "regex"
-                    if flag.token.startswith("(") and flag.token.endwith(")"):
-                        token = "%s|(%s)" % (flag.token, answer_token)
-                    else:
-                        token = "(%s)|(%s)" % (flag.token, answer_token)
+                    token = (
+                        f"{flag.token}|({answer_token})"
+                        if flag.token.startswith("(") and flag.token.endwith(")")
+                        else f"({flag.token})|({answer_token})"
+                    )
+
                     if len(token) < 256:
                         flag.token = token
                         self.dbsession.add(flag)
                         self.dbsession.commit()
-                        success.append(
-                            "Token successfully added for Flag %s" % flag.name
-                        )
+                        success.append(f"Token successfully added for Flag {flag.name}")
                     else:
                         errors.append("Flag token too long. Can not expand token.")
+            uri = {
+                "game_objects": "admin/view/game_objects.html",
+                "statistics": "admin/view/statistics.html",
+            }
+
             self.render(uri[args[0]], errors=errors, success=success)
         else:
             self.render("public/404.html")
@@ -506,7 +499,7 @@ class AdminEditHandler(BaseHandler):
             "category": "categories",
         }
         if len(args) and args[0] in uri:
-            self.redirect("/admin/view/%s" % uri[args[0]])
+            self.redirect(f"/admin/view/{uri[args[0]]}")
         else:
             self.render("public/404.html")
 
@@ -542,12 +535,10 @@ class AdminEditHandler(BaseHandler):
             name = self.get_argument("name", "")
             desc = self.get_argument("description", "")
             if name != corp.name:
-                logging.info("Updated corporation name %s -> %s" % (corp.name, name))
+                logging.info(f"Updated corporation name {corp.name} -> {name}")
                 corp.name = name
             if desc != corp.description:
-                logging.info(
-                    "Updated corporation name %s -> %s" % (corp.description, desc)
-                )
+                logging.info(f"Updated corporation name {corp.description} -> {desc}")
                 corp.description = desc
             self.dbsession.add(corp)
             self.dbsession.commit()
@@ -566,14 +557,9 @@ class AdminEditHandler(BaseHandler):
             category = self.get_argument("category", "")
             cat_desc = self.get_argument("category_description", "")
             if category != cat.category:
-                logging.info(
-                    "Updated category name %s -> %s" % (cat.category, category)
-                )
+                logging.info(f"Updated category name {cat.category} -> {category}")
             if cat_desc != cat.description:
-                logging.info(
-                    "Updated category description %s -> %s"
-                    % (cat.description, cat_desc)
-                )
+                logging.info(f"Updated category description {cat.description} -> {cat_desc}")
             cat.category = category
             cat.description = cat_desc
             self.dbsession.add(cat)
@@ -593,11 +579,10 @@ class AdminEditHandler(BaseHandler):
             # Name
             name = self.get_argument("name", "")
             if name != box.name:
-                if Box.by_name(name) is None:
-                    logging.info("Updated box name %s -> %s" % (box.name, name))
-                    box.name = name
-                else:
+                if Box.by_name(name) is not None:
                     raise ValidationError("Box name already exists")
+                logging.info(f"Updated box name {box.name} -> {name}")
+                box.name = name
             # Corporation
             corp = Corporation.by_uuid(self.get_argument("corporation_uuid", ""))
             if corp is not None and corp.id != box.corporation_id:
@@ -681,7 +666,7 @@ class AdminEditHandler(BaseHandler):
 
             self.dbsession.add(box)
             self.dbsession.commit()
-            self.redirect("/admin/view/game_objects#%s" % box.uuid)
+            self.redirect(f"/admin/view/game_objects#{box.uuid}")
         except ValidationError as error:
             self.render(
                 "admin/view/game_objects.html", success=None, errors=[str(error)]
@@ -697,7 +682,7 @@ class AdminEditHandler(BaseHandler):
             self.dbsession.add(flag)
             self.dbsession.commit()
         except ValidationError as error:
-            logging.error("Failed to reorder flag: %s" % error)
+            logging.error(f"Failed to reorder flag: {error}")
 
     def edit_flags(self):
         """ Edit existing flags in the database """
@@ -708,7 +693,7 @@ class AdminEditHandler(BaseHandler):
             # Name
             name = self.get_argument("name", "")
             if flag._name != name:
-                logging.info("Updated flag name %s -> %s" % (flag._name, name))
+                logging.info(f"Updated flag name {flag._name} -> {name}")
                 flag.name = name
             token = self.get_argument("token", "")
             if flag.token != token:
@@ -732,9 +717,7 @@ class AdminEditHandler(BaseHandler):
                     "Updated %s's type %s -> %s" % (flag.name, flag.type, flag_type)
                 )
                 flag.type = flag_type
-            # Dependency Lock
-            lock = Flag.by_uuid(self.get_argument("lock_uuid", ""))
-            if lock:
+            if lock := Flag.by_uuid(self.get_argument("lock_uuid", "")):
                 flag.lock_id = lock.id
             else:
                 flag.lock_id = None
@@ -757,29 +740,26 @@ class AdminEditHandler(BaseHandler):
             self.dbsession.commit()
             if flag.type == FLAG_CHOICE:
                 self.edit_choices(flag, self.request.arguments)
-            self.redirect("/admin/view/game_objects#%s" % box.uuid)
+            self.redirect(f"/admin/view/game_objects#{box.uuid}")
         except ValidationError as error:
-            self.render(
-                "admin/view/game_objects.html", success=None, errors=["%s" % error]
-            )
+            self.render("admin/view/game_objects.html", success=None, errors=[f"{error}"])
 
     def edit_choices(self, flag, arguments):
         """ Edit flag multiple choice items """
         choiceitems = {}
         currentchoices = json.loads(flag.choices())
         for item in arguments:
-            if item.startswith("choice"):
-                if arguments[item][0] != "":
-                    uuidsplit = item.split("uuid-")
-                    if len(uuidsplit) > 1:
-                        choiceitems[uuidsplit[1]] = arguments[item][0]
-                    else:
-                        for flagoption in arguments[item]:
-                            if len(flagoption) > 0:
-                                # add choice
-                                FlagChoice.create_choice(flag, decode(flagoption))
+            if item.startswith("choice") and arguments[item][0] != "":
+                uuidsplit = item.split("uuid-")
+                if len(uuidsplit) > 1:
+                    choiceitems[uuidsplit[1]] = arguments[item][0]
+                else:
+                    for flagoption in arguments[item]:
+                        if len(flagoption) > 0:
+                            # add choice
+                            FlagChoice.create_choice(flag, decode(flagoption))
         for choice in currentchoices:
-            if not choice["uuid"] in choiceitems:
+            if choice["uuid"] not in choiceitems:
                 # delete choice
                 flagchoice = FlagChoice.by_uuid(choice["uuid"])
                 self.dbsession.delete(flagchoice)
@@ -798,17 +778,16 @@ class AdminEditHandler(BaseHandler):
             if box is None:
                 raise ValidationError("Box does not exist")
             ip_addr = self.get_argument("ip_address", "")
-            if IpAddress.by_address(ip_addr) is None:
-                ip = IpAddress(box_id=box.id, address=ip_addr)
-                if self.get_argument("visible", "").lower() != "true":
-                    ip.visible = False
-                box.ip_addresses.append(ip)
-                self.dbsession.add(ip)
-                self.dbsession.add(box)
-                self.dbsession.commit()
-                self.redirect("/admin/view/game_objects#%s" % box.uuid)
-            else:
+            if IpAddress.by_address(ip_addr) is not None:
                 raise ValidationError("IP address is already in use")
+            ip = IpAddress(box_id=box.id, address=ip_addr)
+            if self.get_argument("visible", "").lower() != "true":
+                ip.visible = False
+            box.ip_addresses.append(ip)
+            self.dbsession.add(ip)
+            self.dbsession.add(box)
+            self.dbsession.commit()
+            self.redirect(f"/admin/view/game_objects#{box.uuid}")
         except ValidationError as error:
             self.render(
                 "admin/view/game_objects.html", success=None, errors=[str(error)]
